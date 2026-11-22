@@ -1,0 +1,15 @@
+[package]
+name = "dim-cli"
+description = "CLI untuk bahasa diagram dim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dim"
+path = "src/main.rs"
+
+[dependencies]
+dim.workspace = true
+serde_json.workspace = true
