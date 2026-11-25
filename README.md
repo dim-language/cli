@@ -14,10 +14,14 @@ cargo install --locked --path apps/cli
 ## Usage
 
 ```sh
-dim check main.dim
-dim parse main.dim --compact
-dim fmt main.dim --check
-dim fmt main.dim --write
+dim init                      # starting dim.config with a style for every container role
+dim check main.dim            # no output when the model is valid
+dim check main.dim --sources  # also check every `source` against a local checkout
+dim parse main.dim --compact  # JSON model; add --spans for source locations
+dim fmt --check               # every .dim file and dim.config under this folder
+dim fmt --write
 ```
+
+`dim check --sources` finds each root's checkout from `--root <id>=<folder>`, or from the git repository that holds the main file when one of its remotes matches the root's `repo`.
 
 Run `dim --help` for the full command list.
