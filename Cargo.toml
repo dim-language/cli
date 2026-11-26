@@ -1,6 +1,6 @@
 [package]
 name = "dim-cli"
-description = "CLI untuk bahasa diagram dim"
+description = "CLI for the dim diagram language"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
