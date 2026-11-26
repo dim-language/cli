@@ -7,23 +7,23 @@ use std::process::{Command, ExitCode};
 use dim::model::{Model, SourceSpan};
 
 const USAGE: &str = "\
-Pemakaian:
+Usage:
   dim check <file.dim> [--sources] [--root <id>=<folder>]...
-                                    validasi model; tanpa pesan kalau benar
+                                    validate a model; prints nothing when it's valid
   dim parse <file.dim> [--compact] [--spans]
-                                    cetak model JSON ke stdout
+                                    print the JSON model to stdout
   dim fmt [<path>...] [--check | --write]
-                                    cetak bentuk kanonik satu file, atau periksa / tulis
-                                    semua file `.dim` dan `dim.config` di folder
-  dim init [<folder>]               buat `dim.config` awal dengan style per role container
+                                    print one file in canonical form, or check / write
+                                    every `.dim` file and `dim.config` in a folder
+  dim init [<folder>]               create a starting `dim.config` with a style for each container role
 
-`dim.config` dibaca dari folder file utama. File yang di-`import` atau di-`amends` dibaca relatif
-terhadap file yang menulisnya.
+`dim.config` is read from the main file's folder. Files named in `import` or `amends` are read relative
+to the file that names them.
 
-`--sources` memeriksa setiap `source` terhadap checkout lokal root-nya. Checkout diambil dari
-`--root`, atau dari repo git tempat file utama berada kalau URL remote-nya sama dengan `repo` root.
+`--sources` checks every `source` against a local checkout of its root. The checkout comes from
+`--root`, or from the git repository the main file is in when its remote URL matches the root's `repo`.
 
-Diagnostik ditulis ke stderr. Exit code: 0 sukses, 1 ada error, 2 salah pemakaian / file tidak terbaca.";
+Diagnostics go to stderr. Exit code: 0 success, 1 errors, 2 wrong usage or an unreadable file.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -44,7 +44,10 @@ fn main() -> ExitCode {
 }
 
 fn help() -> String {
-    format!("dim: parser bahasa diagram dim v{}\n\n{USAGE}", dim::model::VERSION)
+    format!(
+        "dim: the dim diagram language parser, v{}\n\n{USAGE}",
+        dim::model::VERSION
+    )
 }
 
 fn usage() -> ExitCode {
@@ -54,7 +57,7 @@ fn usage() -> ExitCode {
 
 fn read(path: &Path) -> Result<String, ExitCode> {
     fs::read_to_string(path).map_err(|e| {
-        eprintln!("error: tidak bisa membaca `{}`: {e}", path.display());
+        eprintln!("error: can't read `{}`: {e}", path.display());
         ExitCode::from(2)
     })
 }
@@ -74,7 +77,7 @@ fn compile(path: &str) -> Result<(Model, PathBuf), ExitCode> {
         Some(model) => Ok((model, folder)),
         None => {
             let n = out.diagnostics.iter().filter(|d| d.is_error()).count();
-            eprintln!("gagal: {n} error");
+            eprintln!("failed: {n} error{}", if n == 1 { "" } else { "s" });
             Err(ExitCode::from(1))
         }
     }
@@ -103,7 +106,7 @@ fn parse(args: &[String]) -> ExitCode {
     } else {
         serde_json::to_string_pretty(&model)
     };
-    println!("{}", json.expect("model selalu bisa diserialisasi"));
+    println!("{}", json.expect("a model can always be serialized"));
     ExitCode::SUCCESS
 }
 
@@ -138,7 +141,11 @@ fn check(args: &[String]) -> ExitCode {
     if errors.is_empty() {
         ExitCode::SUCCESS
     } else {
-        eprintln!("gagal: {} error", errors.len());
+        eprintln!(
+            "failed: {} error{}",
+            errors.len(),
+            if errors.len() == 1 { "" } else { "s" }
+        );
         ExitCode::from(1)
     }
 }
@@ -154,7 +161,7 @@ fn check_sources(model: &Model, folder: &Path, given: &BTreeMap<String, PathBuf>
     for id in given.keys() {
         if !model.config.roots.iter().any(|r| &r.id == id) {
             errors.push(format!(
-                "error: `--root {id}=...`: tidak ada root `{id}` di `dim.config`"
+                "error: `--root {id}=...`: there's no root `{id}` in `dim.config`"
             ));
         }
     }
@@ -175,7 +182,7 @@ fn check_sources(model: &Model, folder: &Path, given: &BTreeMap<String, PathBuf>
                 .or_else(|| git_checkout(folder, &root.repo));
             if found.is_none() {
                 errors.push(format!(
-                    "error: root `{}` ({}) belum punya checkout lokal; tambahkan `--root {}=<folder>`",
+                    "error: root `{}` ({}) has no local checkout; add `--root {}=<folder>`",
                     root.id, root.repo, root.id
                 ));
             }
@@ -189,15 +196,15 @@ fn check_sources(model: &Model, folder: &Path, given: &BTreeMap<String, PathBuf>
         };
         let shown = format!("{}:{}", source.root, source.path);
         let problem = match (fs::metadata(&target), source.line) {
-            (Err(_), _) => Some(format!("`{shown}` tidak ada di `{}`", checkout.display())),
-            (Ok(meta), Some(_)) if meta.is_dir() => Some(format!("`{shown}` adalah folder, tapi ada `line`")),
+            (Err(_), _) => Some(format!("`{shown}` doesn't exist in `{}`", checkout.display())),
+            (Ok(meta), Some(_)) if meta.is_dir() => Some(format!("`{shown}` is a folder, but `line` is set")),
             (Ok(_), Some(line)) => match fs::read_to_string(&target) {
                 Ok(text) if text.lines().count() < line as usize => Some(format!(
-                    "`{shown}` hanya {} baris, tapi `line` {line}",
+                    "`{shown}` has only {} lines, but `line` is {line}",
                     text.lines().count()
                 )),
                 Ok(_) => None,
-                Err(e) => Some(format!("`{shown}` tidak bisa dibaca: {e}")),
+                Err(e) => Some(format!("`{shown}` can't be read: {e}")),
             },
             (Ok(_), None) => None,
         };
@@ -278,13 +285,13 @@ fn fmt(args: &[String]) -> ExitCode {
     let mut files = Vec::new();
     for path in &paths {
         if let Err(e) = collect(path, &mut files) {
-            eprintln!("error: tidak bisa membaca `{}`: {e}", path.display());
+            eprintln!("error: can't read `{}`: {e}", path.display());
             return ExitCode::from(2);
         }
     }
     let Some(mode) = mode else {
         if !single {
-            eprintln!("error: untuk folder atau beberapa file, pakai `--check` atau `--write`");
+            eprintln!("error: for a folder or several files, use `--check` or `--write`");
             return ExitCode::from(2);
         }
         return match format_file(&files[0]) {
@@ -310,10 +317,10 @@ fn fmt(args: &[String]) -> ExitCode {
             continue;
         }
         if mode == "--check" {
-            eprintln!("`{}` perlu diformat", file.display());
+            eprintln!("`{}` needs formatting", file.display());
             failed = true;
         } else if let Err(e) = write_canonical(file, &source, &formatted) {
-            eprintln!("error: tidak bisa menulis `{}`: {e}", file.display());
+            eprintln!("error: can't write `{}`: {e}", file.display());
             return ExitCode::from(2);
         }
     }
@@ -381,7 +388,7 @@ fn write_canonical(path: &Path, original: &str, formatted: &str) -> io::Result<(
         file.sync_all()?;
         drop(file);
         if fs::read_to_string(&target)? != original {
-            return Err(io::Error::other("isi file berubah saat diformat"));
+            return Err(io::Error::other("the file changed while it was being formatted"));
         }
         fs::rename(&temp, target)
     })();
@@ -419,15 +426,15 @@ fn init(args: &[String]) -> ExitCode {
         fs::create_dir_all(folder).and_then(|()| File::create_new(&target)?.write_all(starter_config().as_bytes()));
     match created {
         Ok(()) => {
-            eprintln!("dibuat: {}", target.display());
+            eprintln!("created: {}", target.display());
             ExitCode::SUCCESS
         }
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            eprintln!("error: `{}` sudah ada", target.display());
+            eprintln!("error: `{}` already exists", target.display());
             ExitCode::from(1)
         }
         Err(e) => {
-            eprintln!("error: tidak bisa menulis `{}`: {e}", target.display());
+            eprintln!("error: can't write `{}`: {e}", target.display());
             ExitCode::from(2)
         }
     }
